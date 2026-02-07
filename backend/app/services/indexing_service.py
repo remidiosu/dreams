@@ -154,7 +154,7 @@ class DreamIndexingService:
             sections.append("")
 
             for symbol in dream_data.symbols:
-                sections.append(f"• SYMBOL: {symbol.name.upper()}")
+                sections.append(f"• SYMBOL: {symbol.name}")
                 sections.append(f"  Category: {symbol.category}")
 
                 if symbol.context:
@@ -177,7 +177,7 @@ class DreamIndexingService:
             sections.append("")
 
             for char in dream_data.characters:
-                sections.append(f"• CHARACTER: {char.name.upper()}")
+                sections.append(f"• CHARACTER: {char.name}")
                 sections.append(f"  Type: {char.character_type}")
 
                 if char.real_world_relation:
@@ -187,7 +187,7 @@ class DreamIndexingService:
                     sections.append(f"  Role in dream: {char.role_in_dream}")
 
                 if char.archetype:
-                    sections.append(f"  ARCHETYPE: {char.archetype.upper()}")
+                    sections.append(f"  ARCHETYPE: {char.archetype}")
 
                 if char.traits:
                     sections.append(f"  Traits: {', '.join(char.traits)}")
@@ -211,19 +211,19 @@ class DreamIndexingService:
             if during_emotions:
                 sections.append("During the dream:")
                 for emotion in during_emotions:
-                    sections.append(f"  • {emotion.emotion.upper()} ({emotion.intensity}/10)")
+                    sections.append(f"  • {emotion.emotion} ({emotion.intensity}/10)")
 
             if waking_emotions:
                 sections.append("Upon waking:")
                 for emotion in waking_emotions:
-                    sections.append(f"  • {emotion.emotion.upper()}({emotion.intensity}/10)")
+                    sections.append(f"  • {emotion.emotion} ({emotion.intensity}/10)")
 
             sections.append("")
 
         if dream_data.themes:
             sections.append("=" * 50)
             sections.append("THEMES:")
-            theme_names = [t.theme.upper() for t in dream_data.themes]
+            theme_names = [t.theme for t in dream_data.themes]
             sections.append(f"  {' | '.join(theme_names)}")
             sections.append("")
 
