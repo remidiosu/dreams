@@ -48,7 +48,5 @@ Important guidelines:
 4. Be specific about context - how each element appeared in the dream
 5. Emotions should reflect what the dreamer likely felt DURING the dream
 6. Keep interpretations suggestive, not definitive
-7. For the dreamer/self character, ALWAYS use the name "The Dreamer" exactly (type: "self")
-8. Use consistent, canonical names for characters — prefer "My father" over "Father" or "Dad", "Unknown woman" over "A woman" or "Some lady"
 
 Return ONLY valid JSON, no markdown formatting or explanation.

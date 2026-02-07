@@ -13,9 +13,3 @@ IMPORTANT: Pay special attention to:
 2. Relationships between entities across different dreams
 3. Recurring patterns and their evolution over time
 4. Emotional context surrounding each symbol and character
-
-ENTITY NAME NORMALIZATION RULES:
-- The dreamer/self is ALWAYS referred to as "The Dreamer" (exact casing)
-- Use consistent canonical names: prefer full descriptive names over abbreviations
-- "The Dreamer" and "Dreamer" are the SAME entity — always use "The Dreamer"
-- Merge entities that refer to the same concept (e.g., "father" and "my father" → "My Father")
