@@ -1,0 +1,25 @@
+# IDE
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Node
+node_modules/
+dist/
+
+# Environment
+.env
+.env.local
+
+# Data
+backend/data/
+
+# OS
+.DS_Store
+
+# Claude
+.claude/
