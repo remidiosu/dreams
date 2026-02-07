@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     db_username: str
     db_password: str
 
-    text_embedding_model: str = "text-embedding-004"
+    text_embedding_model: str = "gemini-embedding-001"
     agent_model: str = "gemini-3-flash-preview"
     llm_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
     llm_model: str = "gemini-3-flash-preview"

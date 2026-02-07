@@ -73,7 +73,7 @@ flowchart TB
 | Backend | FastAPI, SQLAlchemy (async), Pydantic v2, Alembic |
 | Database | PostgreSQL 15 |
 | LLM | Google Gemini (gemini-3-flash-preview) via `google.genai` |
-| Knowledge Graph | fast-graphrag with Gemini text-embedding-004 (768-dim) |
+| Knowledge Graph | fast-graphrag with Gemini gemini-embedding-001 (768-dim) |
 | Auth | JWT (HS256, 7-day expiry) |
 
 ## Agent Tool Flow
