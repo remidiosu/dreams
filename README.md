@@ -223,7 +223,7 @@ erDiagram
 1. **Clone the repository**
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/remidiosu/dreams.git
 cd dream_knowledge
 ```
 
