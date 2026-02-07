@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Optional
 from pydantic import BaseModel
 
@@ -41,7 +42,8 @@ def build_extraction_prompt(narrative: str, setting: Optional[str] = None) -> st
     if setting:
         context += f"\n\nSetting: {setting}"
 
-    with open("app/prompts/extraction_prompt.md", "r") as f:
+    prompt_path = Path(__file__).resolve().parent.parent / "prompts" / "extraction_prompt.md"
+    with open(prompt_path, "r") as f:
         extraction_template = f.read()
 
     return extraction_template.format(context=context)

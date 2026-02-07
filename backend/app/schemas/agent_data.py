@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from pathlib import Path
 
 
 @dataclass
@@ -12,5 +13,6 @@ class AgentResponse:
     tool_calls: list[dict] = field(default_factory=list)
     sources: list[dict] = field(default_factory=list)
 
-with open("app/prompts/system_prompt.md", "r") as f:
+_PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "system_prompt.md"
+with open(_PROMPT_PATH, "r") as f:
     SYSTEM_PROMPT = f.read()

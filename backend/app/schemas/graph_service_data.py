@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
+from pathlib import Path
 
-with open("app/prompts/dream_domain.md", "r") as f:
+_DOMAIN_PATH = Path(__file__).resolve().parent.parent / "prompts" / "dream_domain.md"
+with open(_DOMAIN_PATH, "r") as f:
     DREAM_DOMAIN = f.read()
 
 DREAM_EXAMPLE_QUERIES = [
