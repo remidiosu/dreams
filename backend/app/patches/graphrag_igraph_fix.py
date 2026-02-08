@@ -1,25 +1,28 @@
 from dataclasses import asdict
-from typing import List
+from typing import List, Optional, Iterable, Tuple, Mapping, Any, Sequence, Union
 
 from fast_graphrag._storage._gdb_igraph import IGraphStorage
-from fast_graphrag._types import TIndex
+from fast_graphrag._types import GTEdge, GTId, TIndex
 from fast_graphrag._utils import logger
 
 
-_original_insert_edges = IGraphStorage.insert_edges
-_original_are_neighbours = IGraphStorage.are_neighbours
-_original_upsert_edge = IGraphStorage.upsert_edge
-_original_get_edge_indices = IGraphStorage._get_edge_indices
-_original_get_edge_by_index = IGraphStorage.get_edge_by_index
+async def _safe_are_neighbours(self, source_node: Union[GTId, TIndex], target_node: Union[GTId, TIndex]) -> bool:
+    vcount = self._graph.vcount()
+    if isinstance(source_node, int) and source_node >= vcount:
+        return False
+    if isinstance(target_node, int) and target_node >= vcount:
+        return False
+    return self._graph.get_eid(source_node, target_node, directed=False, error=False) != -1
 
 
 async def _safe_insert_edges(
     self,
-    edges=None,
-    indices=None,
-    attrs=None,
+    edges: Optional[Iterable[GTEdge]] = None,
+    indices: Optional[Iterable[Tuple[TIndex, TIndex]]] = None,
+    attrs: Optional[Mapping[str, Sequence[Any]]] = None,
 ) -> List[TIndex]:
     if indices is not None:
+        assert edges is None, "Cannot provide both indices and edges."
         indices = list(indices)
         if len(indices) == 0:
             return []
@@ -32,15 +35,13 @@ async def _safe_insert_edges(
                 valid_indices.append((src, tgt))
                 valid_attr_indices.append(i)
             else:
-                logger.warning(
-                    f"Skipping edge ({src}, {tgt}): vertex out of range (vcount={vcount})"
-                )
+                logger.warning(f"Skipping edge ({src}, {tgt}): vertex out of range (vcount={vcount})")
 
         if len(valid_indices) == 0:
             return []
 
         filtered_attrs = None
-        if attrs and valid_attr_indices:
+        if attrs:
             filtered_attrs = {}
             for key, values in attrs.items():
                 vals = list(values)
@@ -50,6 +51,7 @@ async def _safe_insert_edges(
         return list(range(self._graph.ecount() - len(valid_indices), self._graph.ecount()))
 
     elif edges is not None:
+        assert indices is None and attrs is None, "Cannot provide both indices and edges."
         edges = list(edges)
         if len(edges) == 0:
             return []
@@ -61,9 +63,7 @@ async def _safe_insert_edges(
                 self._graph.vs.find(name=edge.target)
                 valid_edges.append(edge)
             except ValueError:
-                logger.warning(
-                    f"Skipping edge '{edge.source}' -> '{edge.target}': vertex not found"
-                )
+                logger.warning(f"Skipping edge '{edge.source}' -> '{edge.target}': vertex not found")
 
         if len(valid_edges) == 0:
             return []
@@ -77,26 +77,10 @@ async def _safe_insert_edges(
     return []
 
 
-async def _safe_are_neighbours(
-    self, source_node, target_node
-) -> bool:
-    try:
-        vcount = self._graph.vcount()
-        if isinstance(source_node, int) and source_node >= vcount:
-            return False
-        if isinstance(target_node, int) and target_node >= vcount:
-            return False
-        return self._graph.get_eid(source_node, target_node, directed=False, error=False) != -1
-    except Exception:
-        return False
-
-
-async def _safe_upsert_edge(self, edge, edge_index):
+async def _safe_upsert_edge(self, edge: GTEdge, edge_index: Union[TIndex, None]) -> TIndex:
     if edge_index is not None:
         if edge_index >= self._graph.ecount():
-            logger.error(
-                f"Trying to update edge with index {edge_index} but graph has only {self._graph.ecount()} edges."
-            )
+            logger.error(f"Edge index {edge_index} out of bounds (ecount={self._graph.ecount()})")
             raise ValueError(f"Index {edge_index} is out of bounds")
         already_edge = self._graph.es[edge_index]
         already_edge.update_attributes(**edge.to_attrs(edge=edge))
@@ -105,8 +89,8 @@ async def _safe_upsert_edge(self, edge, edge_index):
         try:
             self._graph.vs.find(name=edge.source)
             self._graph.vs.find(name=edge.target)
-        except ValueError as e:
-            logger.warning(f"Skipping edge upsert '{edge.source}' -> '{edge.target}': {e}")
+        except ValueError:
+            logger.warning(f"Skipping edge upsert '{edge.source}' -> '{edge.target}': vertex not found")
             return None
         return self._graph.add_edge(**asdict(edge)).index
 
@@ -126,32 +110,13 @@ async def _safe_get_edge_indices(self, source_node, target_node):
 
         edges = self._graph.es.select(_source=source_node, _target=target_node)
         return (edge.index for edge in edges)
-    except (ValueError, Exception) as e:
-        logger.warning(f"Error getting edge indices for ({source_node}, {target_node}): {e}")
+    except ValueError:
         return iter([])
 
 
-async def _safe_get_edge_by_index(self, index):
-    try:
-        if index >= self._graph.ecount():
-            return None
-        edge = self._graph.es[index]
-        if edge.source >= self._graph.vcount() or edge.target >= self._graph.vcount():
-            return None
-        return self.config.edge_cls(
-            source=self._graph.vs[edge.source]["name"],
-            target=self._graph.vs[edge.target]["name"],
-            **edge.attributes(),
-        )
-    except Exception as e:
-        logger.warning(f"Error getting edge by index {index}: {e}")
-        return None
-
-
 def apply_graphrag_igraph_patch():
-    IGraphStorage.insert_edges = _safe_insert_edges
     IGraphStorage.are_neighbours = _safe_are_neighbours
+    IGraphStorage.insert_edges = _safe_insert_edges
     IGraphStorage.upsert_edge = _safe_upsert_edge
     IGraphStorage._get_edge_indices = _safe_get_edge_indices
-    IGraphStorage.get_edge_by_index = _safe_get_edge_by_index
     logger.info("Applied igraph safety patch for fast-graphrag")
