@@ -5,7 +5,7 @@ import pickle
 import re
 import time
 from pathlib import Path
-from typing import Optional, AsyncGenerator
+from typing import Optional, AsyncGenerator, Callable, Awaitable
 
 import instructor
 from fast_graphrag import GraphRAG
@@ -112,27 +112,64 @@ class GraphRAGService:
             logger.error(f"Error indexing dream {dream_id}: {e}", exc_info=True)
             return False, str(e)
 
+    async def _index_chunk(
+        self,
+        dreams: list[dict],
+    ) -> tuple[list[int], Optional[str]]:
+        try:
+            dream_ids = [d["id"] for d in dreams]
+            contents = [d["content"] for d in dreams]
+            logger.info(f"Inserting chunk of {len(dreams)} dreams (IDs: {dream_ids})")
+
+            graph = self._get_graph()
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, graph.insert, contents)
+
+            logger.info(f"Successfully indexed chunk: {dream_ids}")
+            return dream_ids, None
+        except Exception as e:
+            logger.error(f"Error indexing chunk {[d['id'] for d in dreams]}: {e}", exc_info=True)
+            return [], str(e)
+
     async def index_dreams_batch(
         self,
         dreams: list[dict],
+        chunk_size: int = 10,
+        on_chunk_success: Optional[Callable[[list[int]], Awaitable[None]]] = None,
     ) -> tuple[int, int, list[str], list[int]]:
         success_count = 0
         failure_count = 0
         errors = []
         successful_ids = []
 
-        for dream in dreams:
-            success, error = await self.index_dream(
-                dream_id=dream["id"],
-                content=dream["content"],
-            )
+        for i in range(0, len(dreams), chunk_size):
+            chunk = dreams[i:i + chunk_size]
+            chunk_ids, error = await self._index_chunk(chunk)
 
-            if success:
-                success_count += 1
-                successful_ids.append(dream["id"])
+            if chunk_ids:
+                success_count += len(chunk_ids)
+                successful_ids.extend(chunk_ids)
+                if on_chunk_success:
+                    await on_chunk_success(chunk_ids)
             else:
-                failure_count += 1
-                errors.append(f"Dream {dream['id']}: {error}")
+                logger.warning(f"Chunk failed, falling back to individual indexing")
+                individual_successes = []
+                for dream in chunk:
+                    success, err = await self.index_dream(
+                        dream_id=dream["id"],
+                        content=dream["content"],
+                    )
+                    if success:
+                        success_count += 1
+                        successful_ids.append(dream["id"])
+                        individual_successes.append(dream["id"])
+                    else:
+                        failure_count += 1
+                        errors.append(f"Dream {dream['id']}: {err}")
+                if individual_successes and on_chunk_success:
+                    await on_chunk_success(individual_successes)
+
+            self._graph = None
 
         return success_count, failure_count, errors, successful_ids
 

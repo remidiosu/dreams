@@ -88,12 +88,17 @@ async def index_pending_dreams(
 
     logger.info(f"Prepared {len(dreams_to_index)} dreams, starting GraphRAG indexing")
     graphrag = get_graphrag_service(user_id)
-    success_count, failure_count, errors, successful_ids = await graphrag.index_dreams_batch(dreams_to_index)
 
-    if successful_ids:
-        await graph_repo.mark_dreams_indexed(successful_ids)
-        await graph_repo.increment_user_indexed_count(user_id, len(successful_ids))
+    async def save_chunk_progress(indexed_ids: list[int]):
+        await graph_repo.mark_dreams_indexed(indexed_ids)
+        await graph_repo.increment_user_indexed_count(user_id, len(indexed_ids))
         await db.commit()
+        logger.info(f"Saved progress: {len(indexed_ids)} dreams committed to DB")
+
+    success_count, failure_count, errors, successful_ids = await graphrag.index_dreams_batch(
+        dreams_to_index,
+        on_chunk_success=save_chunk_progress,
+    )
 
     processing_time = int((time.time() - start_time) * 1000)
     logger.info(f"Indexing complete: {success_count} success, {failure_count} failed in {processing_time}ms")
@@ -181,12 +186,20 @@ async def reindex_all_dreams(
         )
 
     logger.info(f"Prepared {len(dreams_to_index)} dreams, starting GraphRAG reindexing")
-    success_count, failure_count, errors, successful_ids = await graphrag.index_dreams_batch(dreams_to_index)
 
-    if successful_ids:
-        await graph_repo.mark_dreams_indexed(successful_ids)
-        await graph_repo.update_user_indexed_count(user_id, len(successful_ids))
+    total_saved = 0
+    async def save_reindex_progress(indexed_ids: list[int]):
+        nonlocal total_saved
+        await graph_repo.mark_dreams_indexed(indexed_ids)
+        total_saved += len(indexed_ids)
+        await graph_repo.update_user_indexed_count(user_id, total_saved)
         await db.commit()
+        logger.info(f"Saved reindex progress: {len(indexed_ids)} dreams committed to DB")
+
+    success_count, failure_count, errors, successful_ids = await graphrag.index_dreams_batch(
+        dreams_to_index,
+        on_chunk_success=save_reindex_progress,
+    )
 
     processing_time = int((time.time() - start_time) * 1000)
 
