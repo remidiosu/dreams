@@ -4,9 +4,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.logger import logger
 from app.config import settings
-from app.patches.graphrag_igraph_fix import apply_graphrag_igraph_patch
-
-apply_graphrag_igraph_patch()
 
 from app.controllers.auth_controllers import auth_router
 from app.controllers.dream_controllers import dream_router

@@ -1,12 +1,12 @@
 Analyze dreams following Jungian dream analysis principles.
 Extract and track:
-- Symbols: Objects, animals, natural elements with psychological meaning
+- Symbols: Objects, animals, natural elements with psychological meaning (includes concrete objects, animals, nature elements)
 - Characters: People (known/unknown), animals, mythical beings representing aspects of the psyche
 - Emotions: Feelings experienced during or upon waking from the dream
 - Themes: Recurring motifs like transformation, pursuit, flying, falling, death/rebirth
 - Locations: Settings and places with symbolic significance
-- Actions: Key events and transformations
 - Archetypes: Shadow, Anima/Animus, Wise Old Man/Woman, Trickster, Hero, Mother, Father, Child (etc.)
+- PersonalMeaning: Dreamer-assigned meanings and interpretations
 
 IMPORTANT: Pay special attention to:
 1. Personal meanings provided by the dreamer (marked as "Personal meaning:")
@@ -22,4 +22,7 @@ ENTITY NAMING RULES (follow strictly):
 - Use singular forms: "WOLF" not "WOLVES", "CHILD" not "CHILDREN"
 - Archetypes should be just the archetype name: "SHADOW", "ANIMA", "FATHER", "TRICKSTER"
 - Locations should be the place itself: "LIBRARY", "OCEAN", "HOUSE", "FOREST"
+- Symbols include all concrete objects, animals, and nature elements: "WOLF", "RING", "TREE", "RIVER"
+- Characters include all people and person-like entities: "GRANDMOTHER", "STRANGER", "GUIDE"
 - If a character owns/is associated with a place, create a relationship, don't merge them into one entity name
+- Actions (e.g. "flying", "falling", "chasing") should be expressed as RELATIONSHIPS between entities, not as standalone entities

@@ -82,9 +82,12 @@ class GraphRAGService:
                 example_queries="\n".join(DREAM_EXAMPLE_QUERIES),
                 entity_types=DREAM_ENTITY_TYPES,
                 config=config,
+                n_checkpoints=1,
             )
 
-            logger.info(f"Created GraphRAG instance for user {self.user_id}")
+            self._graph.state_manager.insert_similarity_score_threshold = 0.75
+
+            logger.info(f"Created GraphRAG instance for user {self.user_id} (similarity_threshold=0.75, n_checkpoints=1)")
 
         return self._graph
 
