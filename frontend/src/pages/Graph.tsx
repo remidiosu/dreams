@@ -200,15 +200,33 @@ export function Graph() {
     return () => observer.disconnect()
   }, [statusLoading])
 
-  // Zoom-to-fit when graph data loads or canvas resizes
+  // Configure d3 forces for better spacing
+  useEffect(() => {
+    if (!graphRef.current) return
+    const fg = graphRef.current
+
+    const nodeCount = graphData.nodes.length
+    const chargeStrength = nodeCount > 50 ? -300 : nodeCount > 20 ? -200 : -150
+
+    fg.d3Force('charge')?.strength(chargeStrength).distanceMax(400)
+    fg.d3Force('link')?.distance(100).strength(0.3)
+    fg.d3Force('collide', null) // clear any existing
+    import('d3-force-3d').then(({ forceCollide }) => {
+      fg.d3Force('collide', forceCollide().radius(16).strength(0.7))
+      fg.d3ReheatSimulation()
+    })
+  }, [graphData.nodes.length])
+
+  // Zoom-to-fit when graph data loads or canvas resizes or filter changes
   useEffect(() => {
     if (graphData.nodes.length > 0 && graphRef.current && dimensions.width > 0 && dimensions.height > 0) {
+      const padding = graphData.nodes.length < 30 ? 120 : 80
       const timer = setTimeout(() => {
-        graphRef.current?.zoomToFit(400, 80)
+        graphRef.current?.zoomToFit(400, padding)
       }, 500)
       return () => clearTimeout(timer)
     }
-  }, [graphData.nodes.length, dimensions])
+  }, [graphData.nodes.length, dimensions, filterType])
 
   // Custom node rendering - clean circles with optional labels
   const drawNode = useCallback((node: GraphNodeExt, ctx: CanvasRenderingContext2D, globalScale: number) => {
@@ -437,7 +455,14 @@ export function Graph() {
                 const targetId = typeof l.target === 'string' ? l.target : l.target.id
                 return selectedNode && (sourceId === selectedNode.id || targetId === selectedNode.id) ? 3 : 1.5
               }}
-              linkDirectionalParticles={2}
+              linkCurvature={0.15}
+              linkDirectionalParticles={link => {
+                if (!selectedNode) return 0
+                const l = link as GraphLinkExt
+                const sourceId = typeof l.source === 'string' ? l.source : l.source.id
+                const targetId = typeof l.target === 'string' ? l.target : l.target.id
+                return (sourceId === selectedNode.id || targetId === selectedNode.id) ? 3 : 0
+              }}
               linkDirectionalParticleWidth={3}
               linkDirectionalParticleSpeed={0.003}
               linkDirectionalParticleColor={getParticleColor as any}
@@ -445,7 +470,7 @@ export function Graph() {
               onNodeHover={node => setHoveredNode(node as GraphNodeExt | null)}
               onBackgroundClick={() => setSelectedNode(null)}
               backgroundColor={theme === 'dark' ? '#0f0f0f' : '#fafafa'}
-              cooldownTicks={100}
+              cooldownTicks={200}
               d3AlphaDecay={0.02}
               d3VelocityDecay={0.3}
               enableZoomInteraction={true}
@@ -549,7 +574,7 @@ export function Graph() {
 
             {/* Selected Node Details */}
             {selectedNode && (
-              <div className="absolute bottom-4 left-4 max-w-xs bg-surface/95 backdrop-blur-sm border border-border rounded-xl p-4 shadow-xl max-h-[300px] overflow-y-auto">
+              <div className="absolute bottom-4 left-4 max-w-sm bg-surface/95 backdrop-blur-sm border border-border rounded-xl p-4 shadow-xl max-h-[360px] overflow-y-auto">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">

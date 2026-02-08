@@ -393,12 +393,93 @@ class GraphRAGService:
             except Exception as e:
                 logger.error(f"Could not read graph_igraph_data.pklz: {e}", exc_info=True)
 
+        nodes, edges = self._deduplicate_nodes(nodes, edges)
+
         logger.info(f"Exported graph: {len(nodes)} nodes, {len(edges)} edges")
         return {
             "nodes": nodes,
             "edges": edges,
             "stats": {"node_count": len(nodes), "edge_count": len(edges)},
         }
+
+    @staticmethod
+    def _normalize_entity_name(name: str) -> str:
+        """Normalize an entity name for dedup comparison."""
+        n = name.strip().upper()
+        # Strip leading articles
+        for prefix in ("THE ", "A ", "AN "):
+            if n.startswith(prefix):
+                n = n[len(prefix):]
+        # Strip trailing type suffixes
+        for suffix in ("_ARCHETYPE", " ARCHETYPE", "_SYMBOL", " SYMBOL",
+                        "_CHARACTER", " CHARACTER", "_FIGURE", " FIGURE"):
+            if n.endswith(suffix):
+                n = n[:-len(suffix)]
+        # Normalize separators
+        n = n.replace("_", " ")
+        n = re.sub(r"\s+", " ", n).strip()
+        return n
+
+    def _deduplicate_nodes(
+        self,
+        nodes: list[dict],
+        edges: list[dict],
+    ) -> tuple[list[dict], list[dict]]:
+        """Merge near-duplicate nodes at export time by normalized name."""
+        # Group nodes by normalized name
+        groups: dict[str, list[int]] = {}
+        for idx, node in enumerate(nodes):
+            key = self._normalize_entity_name(node["label"])
+            groups.setdefault(key, []).append(idx)
+
+        # Build id remapping: for each group, pick the node with the shortest label
+        id_remap: dict[str, str] = {}
+        kept_indices: set[int] = set()
+
+        for key, indices in groups.items():
+            # Pick canonical node: shortest label, then first encountered
+            canonical_idx = min(indices, key=lambda i: (len(nodes[i]["label"]), i))
+            kept_indices.add(canonical_idx)
+            canonical_id = nodes[canonical_idx]["id"]
+
+            # Merge descriptions from duplicates into canonical
+            descriptions = []
+            for i in indices:
+                id_remap[nodes[i]["id"]] = canonical_id
+                if i != canonical_idx and nodes[i].get("description"):
+                    descriptions.append(nodes[i]["description"])
+
+            if descriptions:
+                existing = nodes[canonical_idx].get("description", "")
+                merged = existing
+                for desc in descriptions:
+                    if desc not in merged:
+                        merged = f"{merged} {desc}".strip() if merged else desc
+                nodes[canonical_idx]["description"] = merged[:300]
+
+        if len(kept_indices) == len(nodes):
+            return nodes, edges
+
+        original_count = len(nodes)
+        # Filter to kept nodes only
+        new_nodes = [nodes[i] for i in sorted(kept_indices)]
+
+        # Remap edges and deduplicate
+        seen_edges: set[tuple[str, str]] = set()
+        new_edges = []
+        for edge in edges:
+            source = id_remap.get(edge["source"], edge["source"])
+            target = id_remap.get(edge["target"], edge["target"])
+            if source == target:
+                continue
+            edge_key = (source, target) if source < target else (target, source)
+            if edge_key in seen_edges:
+                continue
+            seen_edges.add(edge_key)
+            new_edges.append({**edge, "source": source, "target": target})
+
+        logger.info(f"Dedup: {original_count} → {len(new_nodes)} nodes, {len(edges)} → {len(new_edges)} edges")
+        return new_nodes, new_edges
 
     def _parse_entity_string(self, entity_str: str) -> dict:
         result = {"name": entity_str, "type": "entity", "description": ""}

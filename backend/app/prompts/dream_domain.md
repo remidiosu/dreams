@@ -13,3 +13,13 @@ IMPORTANT: Pay special attention to:
 2. Relationships between entities across different dreams
 3. Recurring patterns and their evolution over time
 4. Emotional context surrounding each symbol and character
+
+ENTITY NAMING RULES (follow strictly):
+- Use short, canonical names: "FATHER" not "THE FATHER" or "FATHER_ARCHETYPE" or "FATHER FIGURE"
+- Never append type suffixes: "SHADOW" not "SHADOW_ARCHETYPE", "WATER" not "WATER_SYMBOL"
+- Never prepend articles: "FOREST" not "THE FOREST", "MOTHER" not "A MOTHER"
+- Decompose compound entities: "FATHERS LIBRARY" → two entities "FATHER" + "LIBRARY" with a relationship between them
+- Use singular forms: "WOLF" not "WOLVES", "CHILD" not "CHILDREN"
+- Archetypes should be just the archetype name: "SHADOW", "ANIMA", "FATHER", "TRICKSTER"
+- Locations should be the place itself: "LIBRARY", "OCEAN", "HOUSE", "FOREST"
+- If a character owns/is associated with a place, create a relationship, don't merge them into one entity name
