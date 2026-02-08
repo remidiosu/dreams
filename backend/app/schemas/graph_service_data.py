@@ -24,7 +24,11 @@ DREAM_ENTITY_TYPES = [
     "Emotion",
     "Theme",
     "Location",
+    "Action",
     "Archetype",
+    "Object",
+    "Animal",
+    "Person",
     "PersonalMeaning",
 ]
 

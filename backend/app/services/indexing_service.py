@@ -1,4 +1,3 @@
-import re
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -119,21 +118,6 @@ class DreamIndexingService:
 
         return [ThemeData(theme=t.theme) for t in themes]
 
-    @staticmethod
-    def _normalize_name(name: str) -> str:
-        """Normalize an entity name to a clean canonical form for GraphRAG indexing."""
-        n = name.strip().upper()
-        for prefix in ("THE ", "A ", "AN "):
-            if n.startswith(prefix):
-                n = n[len(prefix):]
-        for suffix in ("_ARCHETYPE", " ARCHETYPE", "_SYMBOL", " SYMBOL",
-                        "_CHARACTER", " CHARACTER", "_FIGURE", " FIGURE"):
-            if n.endswith(suffix):
-                n = n[:-len(suffix)]
-        n = n.replace("_", " ")
-        n = re.sub(r"\s+", " ", n).strip()
-        return n
-
     def format_dream_for_indexing(self, dream_data: DreamData) -> str:
         sections = []
 
@@ -170,7 +154,7 @@ class DreamIndexingService:
             sections.append("")
 
             for symbol in dream_data.symbols:
-                sections.append(f"• SYMBOL: {self._normalize_name(symbol.name)}")
+                sections.append(f"• SYMBOL: {symbol.name}")
                 sections.append(f"  Category: {symbol.category}")
 
                 if symbol.context:
@@ -193,7 +177,7 @@ class DreamIndexingService:
             sections.append("")
 
             for char in dream_data.characters:
-                sections.append(f"• CHARACTER: {self._normalize_name(char.name)}")
+                sections.append(f"• CHARACTER: {char.name}")
                 sections.append(f"  Type: {char.character_type}")
 
                 if char.real_world_relation:

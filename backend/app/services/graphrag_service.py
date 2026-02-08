@@ -5,7 +5,7 @@ import pickle
 import re
 import time
 from pathlib import Path
-from typing import Optional, AsyncGenerator, Callable, Awaitable
+from typing import Optional, AsyncGenerator
 
 import instructor
 from fast_graphrag import GraphRAG
@@ -82,12 +82,9 @@ class GraphRAGService:
                 example_queries="\n".join(DREAM_EXAMPLE_QUERIES),
                 entity_types=DREAM_ENTITY_TYPES,
                 config=config,
-                n_checkpoints=1,
             )
 
-            self._graph.state_manager.insert_similarity_score_threshold = 0.75
-
-            logger.info(f"Created GraphRAG instance for user {self.user_id} (similarity_threshold=0.75, n_checkpoints=1)")
+            logger.info(f"Created GraphRAG instance for user {self.user_id}")
 
         return self._graph
 
@@ -115,64 +112,27 @@ class GraphRAGService:
             logger.error(f"Error indexing dream {dream_id}: {e}", exc_info=True)
             return False, str(e)
 
-    async def _index_chunk(
-        self,
-        dreams: list[dict],
-    ) -> tuple[list[int], Optional[str]]:
-        try:
-            dream_ids = [d["id"] for d in dreams]
-            contents = [d["content"] for d in dreams]
-            logger.info(f"Inserting chunk of {len(dreams)} dreams (IDs: {dream_ids})")
-
-            graph = self._get_graph()
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, graph.insert, contents)
-
-            logger.info(f"Successfully indexed chunk: {dream_ids}")
-            return dream_ids, None
-        except Exception as e:
-            logger.error(f"Error indexing chunk {[d['id'] for d in dreams]}: {e}", exc_info=True)
-            return [], str(e)
-
     async def index_dreams_batch(
         self,
         dreams: list[dict],
-        chunk_size: int = 10,
-        on_chunk_success: Optional[Callable[[list[int]], Awaitable[None]]] = None,
     ) -> tuple[int, int, list[str], list[int]]:
         success_count = 0
         failure_count = 0
         errors = []
         successful_ids = []
 
-        for i in range(0, len(dreams), chunk_size):
-            chunk = dreams[i:i + chunk_size]
-            chunk_ids, error = await self._index_chunk(chunk)
+        for dream in dreams:
+            success, error = await self.index_dream(
+                dream_id=dream["id"],
+                content=dream["content"],
+            )
 
-            if chunk_ids:
-                success_count += len(chunk_ids)
-                successful_ids.extend(chunk_ids)
-                if on_chunk_success:
-                    await on_chunk_success(chunk_ids)
+            if success:
+                success_count += 1
+                successful_ids.append(dream["id"])
             else:
-                logger.warning(f"Chunk failed, falling back to individual indexing")
-                individual_successes = []
-                for dream in chunk:
-                    success, err = await self.index_dream(
-                        dream_id=dream["id"],
-                        content=dream["content"],
-                    )
-                    if success:
-                        success_count += 1
-                        successful_ids.append(dream["id"])
-                        individual_successes.append(dream["id"])
-                    else:
-                        failure_count += 1
-                        errors.append(f"Dream {dream['id']}: {err}")
-                if individual_successes and on_chunk_success:
-                    await on_chunk_success(individual_successes)
-
-            self._graph = None
+                failure_count += 1
+                errors.append(f"Dream {dream['id']}: {error}")
 
         return success_count, failure_count, errors, successful_ids
 
@@ -433,93 +393,12 @@ class GraphRAGService:
             except Exception as e:
                 logger.error(f"Could not read graph_igraph_data.pklz: {e}", exc_info=True)
 
-        nodes, edges = self._deduplicate_nodes(nodes, edges)
-
         logger.info(f"Exported graph: {len(nodes)} nodes, {len(edges)} edges")
         return {
             "nodes": nodes,
             "edges": edges,
             "stats": {"node_count": len(nodes), "edge_count": len(edges)},
         }
-
-    @staticmethod
-    def _normalize_entity_name(name: str) -> str:
-        """Normalize an entity name for dedup comparison."""
-        n = name.strip().upper()
-        # Strip leading articles
-        for prefix in ("THE ", "A ", "AN "):
-            if n.startswith(prefix):
-                n = n[len(prefix):]
-        # Strip trailing type suffixes
-        for suffix in ("_ARCHETYPE", " ARCHETYPE", "_SYMBOL", " SYMBOL",
-                        "_CHARACTER", " CHARACTER", "_FIGURE", " FIGURE"):
-            if n.endswith(suffix):
-                n = n[:-len(suffix)]
-        # Normalize separators
-        n = n.replace("_", " ")
-        n = re.sub(r"\s+", " ", n).strip()
-        return n
-
-    def _deduplicate_nodes(
-        self,
-        nodes: list[dict],
-        edges: list[dict],
-    ) -> tuple[list[dict], list[dict]]:
-        """Merge near-duplicate nodes at export time by normalized name."""
-        # Group nodes by normalized name
-        groups: dict[str, list[int]] = {}
-        for idx, node in enumerate(nodes):
-            key = self._normalize_entity_name(node["label"])
-            groups.setdefault(key, []).append(idx)
-
-        # Build id remapping: for each group, pick the node with the shortest label
-        id_remap: dict[str, str] = {}
-        kept_indices: set[int] = set()
-
-        for key, indices in groups.items():
-            # Pick canonical node: shortest label, then first encountered
-            canonical_idx = min(indices, key=lambda i: (len(nodes[i]["label"]), i))
-            kept_indices.add(canonical_idx)
-            canonical_id = nodes[canonical_idx]["id"]
-
-            # Merge descriptions from duplicates into canonical
-            descriptions = []
-            for i in indices:
-                id_remap[nodes[i]["id"]] = canonical_id
-                if i != canonical_idx and nodes[i].get("description"):
-                    descriptions.append(nodes[i]["description"])
-
-            if descriptions:
-                existing = nodes[canonical_idx].get("description", "")
-                merged = existing
-                for desc in descriptions:
-                    if desc not in merged:
-                        merged = f"{merged} {desc}".strip() if merged else desc
-                nodes[canonical_idx]["description"] = merged[:300]
-
-        if len(kept_indices) == len(nodes):
-            return nodes, edges
-
-        original_count = len(nodes)
-        # Filter to kept nodes only
-        new_nodes = [nodes[i] for i in sorted(kept_indices)]
-
-        # Remap edges and deduplicate
-        seen_edges: set[tuple[str, str]] = set()
-        new_edges = []
-        for edge in edges:
-            source = id_remap.get(edge["source"], edge["source"])
-            target = id_remap.get(edge["target"], edge["target"])
-            if source == target:
-                continue
-            edge_key = (source, target) if source < target else (target, source)
-            if edge_key in seen_edges:
-                continue
-            seen_edges.add(edge_key)
-            new_edges.append({**edge, "source": source, "target": target})
-
-        logger.info(f"Dedup: {original_count} → {len(new_nodes)} nodes, {len(edges)} → {len(new_edges)} edges")
-        return new_nodes, new_edges
 
     def _parse_entity_string(self, entity_str: str) -> dict:
         result = {"name": entity_str, "type": "entity", "description": ""}
