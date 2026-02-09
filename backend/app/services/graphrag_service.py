@@ -8,13 +8,16 @@ from pathlib import Path
 from typing import Optional, AsyncGenerator
 
 import instructor
-from fast_graphrag import GraphRAG
+from fast_graphrag import GraphRAG, QueryParam
 from fast_graphrag._llm import OpenAILLMService, OpenAIEmbeddingService
 
 from app.config import settings
 from app.logger import logger
 from app.schemas.graph_service_data import DREAM_DOMAIN, DREAM_ENTITY_TYPES, DREAM_EXAMPLE_QUERIES, \
     QueryResult, GraphStats
+
+
+_user_locks: dict[int, asyncio.Lock] = {}
 
 
 class GraphRAGService:
@@ -24,6 +27,11 @@ class GraphRAGService:
         self.user_id = user_id
         self.working_dir = self._get_working_dir()
         self._graph: Optional[GraphRAG] = None
+
+    def _get_lock(self) -> asyncio.Lock:
+        if self.user_id not in _user_locks:
+            _user_locks[self.user_id] = asyncio.Lock()
+        return _user_locks[self.user_id]
 
     def _get_working_dir(self) -> Path:
         base_dir = Path(settings.graph_storage_path) / str(self.user_id)
@@ -102,14 +110,15 @@ class GraphRAGService:
             graph = self._get_graph()
             logger.debug(f"Content length: {len(content)} chars")
 
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, graph.insert, content)
+            async with self._get_lock():
+                await graph.async_insert(content)
 
             logger.info(f"Successfully indexed dream {dream_id}")
             return True, None
 
         except Exception as e:
             logger.error(f"Error indexing dream {dream_id}: {e}", exc_info=True)
+            self._graph = None
             return False, str(e)
 
     async def index_dreams_batch(
@@ -121,7 +130,10 @@ class GraphRAGService:
         errors = []
         successful_ids = []
 
-        for dream in dreams:
+        for i, dream in enumerate(dreams):
+            if i > 0:
+                await asyncio.sleep(1.0)
+
             success, error = await self.index_dream(
                 dream_id=dream["id"],
                 content=dream["content"],
@@ -153,11 +165,16 @@ class GraphRAGService:
 
         try:
             graph = self._get_graph()
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(
-                None,
-                lambda: graph.query(question, with_references=with_references)
-            )
+
+            async with self._get_lock():
+                await graph.state_manager.query_start()
+                try:
+                    result = await graph.async_query(
+                        question,
+                        QueryParam(with_references=with_references),
+                    )
+                finally:
+                    await graph.state_manager.query_done()
 
             processing_time = int((time.time() - start_time) * 1000)
             sources = self._parse_sources(result) if with_references else []
@@ -249,47 +266,52 @@ class GraphRAGService:
         if not self.graph_exists:
             return GraphStats()
 
-        stats = GraphStats()
+        async with self._get_lock():
+            stats = GraphStats()
 
-        graph_file = self.working_dir / "graph_igraph_data.pklz"
-        if graph_file.exists():
-            try:
-                with gzip.open(graph_file, "rb") as f:
-                    graph_data = pickle.load(f)
+            graph_file = self.working_dir / "graph_igraph_data.pklz"
+            if graph_file.exists():
+                try:
+                    with gzip.open(graph_file, "rb") as f:
+                        graph_data = pickle.load(f)
 
-                if hasattr(graph_data, 'vcount'):
-                    stats.entity_count = graph_data.vcount()
-                if hasattr(graph_data, 'ecount'):
-                    stats.relationship_count = graph_data.ecount()
-            except Exception as e:
-                logger.warning(f"Could not read graph_igraph_data.pklz: {e}")
+                    if hasattr(graph_data, 'vcount'):
+                        stats.entity_count = graph_data.vcount()
+                    if hasattr(graph_data, 'ecount'):
+                        stats.relationship_count = graph_data.ecount()
+                except Exception as e:
+                    logger.warning(f"Could not read graph_igraph_data.pklz: {e}")
 
-        metadata_file = self.working_dir / "entities_hnsw_metadata.pkl"
-        if metadata_file.exists() and stats.entity_count == 0:
-            try:
-                with open(metadata_file, "rb") as f:
-                    metadata = pickle.load(f)
-                    if isinstance(metadata, (list, dict)):
-                        stats.entity_count = len(metadata)
-            except Exception as e:
-                logger.warning(f"Could not read entities_hnsw_metadata.pkl: {e}")
+            metadata_file = self.working_dir / "entities_hnsw_metadata.pkl"
+            if metadata_file.exists() and stats.entity_count == 0:
+                try:
+                    with open(metadata_file, "rb") as f:
+                        metadata = pickle.load(f)
+                        if isinstance(metadata, (list, dict)):
+                            stats.entity_count = len(metadata)
+                except Exception as e:
+                    logger.warning(f"Could not read entities_hnsw_metadata.pkl: {e}")
 
-        chunks_file = self.working_dir / "chunks_kv_data.pkl"
-        if chunks_file.exists():
-            try:
-                with open(chunks_file, "rb") as f:
-                    chunks = pickle.load(f)
-                    if isinstance(chunks, dict):
-                        stats.chunk_count = len(chunks)
-            except Exception as e:
-                logger.warning(f"Could not read chunks_kv_data.pkl: {e}")
+            chunks_file = self.working_dir / "chunks_kv_data.pkl"
+            if chunks_file.exists():
+                try:
+                    with open(chunks_file, "rb") as f:
+                        chunks = pickle.load(f)
+                        if isinstance(chunks, dict):
+                            stats.chunk_count = len(chunks)
+                except Exception as e:
+                    logger.warning(f"Could not read chunks_kv_data.pkl: {e}")
 
-        return stats
+            return stats
 
     async def export_graph(self) -> dict:
         if not self.graph_exists:
             return {"nodes": [], "edges": [], "stats": {"node_count": 0, "edge_count": 0}}
 
+        async with self._get_lock():
+            return await self._export_graph_unlocked()
+
+    async def _export_graph_unlocked(self) -> dict:
         nodes = []
         edges = []
 
